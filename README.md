@@ -2,6 +2,8 @@
 
 > **Autonomous, AI-Arbitrated Escrow Protocol for Digital Deliverables.**
 
+![Pact Architecture](arch.png)
+
 Pact eliminates the two-sided trust dilemma in digital transactions. Traditional escrow requires slow, expensive, and subjective human dispute mediators ($20–$50/ticket, taking days). Pact replaces human arbitration with a deterministic quality gate and a fast Groq LLM judge — holding buyer funds via PayPal's two-phase authorization and autonomously settling payments in seconds.
 
 ---
