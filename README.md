@@ -21,34 +21,7 @@ In freelance data sourcing and digital deliverable markets (e.g. AI training dat
 
 ## ⚡ How It Works (The Lifecycle)
 
-```
-[Buyer Dashboard]               [Django + Celery Engine]            [Groq LLM & PayPal]
-       │                                   │                                  │
-       ├── 1. Create Contract ($150) ─────►│                                  │
-       │                                   ├── 2. Create PayPal Order ───────►│ (intent: AUTHORIZE)
-       ├── 3. Approve via PayPal Modal ───►│                                  │
-       │   (Funds frozen on buyer card)    │── 4. State: AUTHORIZED           │
-       │                                   │                                  │
-[Seller Portal]                            │                                  │
-       │                                   │                                  │
-       ├── 5. Submit JSON Dataset ────────►│                                  │
-       │                                   ├── 6. State: SUBMITTED            │
-       │                                   ├── 7. Enqueue Celery Task         │
-       │                                   │                                  │
-       │                                   │── 8. Gate 1: Deterministic Check │ (list, >= 2 dicts)
-       │                                   │      [FAIL] ──► Void Hold & Reject
-       │                                   │                                  │
-       │                                   │── 9. Gate 2: Groq Semantic Audit │
-       │                                   │      (Checks injection & quality)│
-       │                                   │                                  │
-       │                                   │── 10. Settlement Decision:       │
-       │                                   │       - Passed AND Conf >= 85%:  │
-       │                                   │         Capture Hold ───────────►│ (Seller paid)
-       │                                   │       - Failed OR Conf < 85%:    │
-       │                                   │         Void Hold ──────────────►│ (Buyer refunded)
-       ▼                                   ▼                                  ▼
-                            [Live Audit Ledger (Polling 3s)]
-```
+![Pact Lifecycle](arch2.png)
 
 ---
 
