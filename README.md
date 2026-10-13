@@ -146,5 +146,3 @@ The test suite covers:
 
 ---
 
-## 📄 License
-MIT License.
