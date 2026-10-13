@@ -25,7 +25,7 @@ In freelance data sourcing and digital deliverable markets (e.g. AI training dat
 
 ---
 
-## 🛡️ Key Architectural & Product Decisions
+## Key Architectural & Product Decisions
 
 ### 1. Two-Phase Programmable Escrow (PayPal v2 REST)
 Unlike standard e-commerce carts with instant capture (`intent: capture`), Pact uses **`intent: authorize`**. Funds are frozen on the buyer's payment instrument without transferring to the platform or seller. When verification resolves, the backend programmatically captures (`capture_authorization`) or voids (`void_authorization`) the hold with zero platform dispute overhead.
