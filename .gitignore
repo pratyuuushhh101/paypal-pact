@@ -1,0 +1,74 @@
+# ===========================
+# Python / Django
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# ===========================
+# Environment & Secrets
+# ===========================
+.env
+.env.local
+.env.production
+.env.staging
+*.env
+
+# ===========================
+# IDE / Editor
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===========================
+# Django
+# ===========================
+*.sqlite3
+db.sqlite3
+media/
+staticfiles/
+static_collected/
+
+# ===========================
+# Celery
+# ===========================
+celerybeat-schedule
+celerybeat.pid
+
+# ===========================
+# Coverage & Testing
+# ===========================
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.pytest_cache/
+nosetests.xml
+
+# ===========================
+# Distribution / Build
+# ===========================
+dist/
+build/
+*.egg-info/
+*.egg
+
+# ===========================
+# Misc
+# ===========================
+*.log
+*.pot
+findings.txt
