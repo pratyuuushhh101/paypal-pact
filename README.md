@@ -1,4 +1,4 @@
-# Pact Core 🤝
+# Pact Core 
 
 > **Autonomous, AI-Arbitrated Escrow Protocol for Digital Deliverables.**
 
@@ -8,7 +8,7 @@ Pact eliminates the two-sided trust dilemma in digital transactions. Traditional
 
 ---
 
-## 💡 The Core Problem
+## The Core Problem
 
 In freelance data sourcing and digital deliverable markets (e.g. AI training datasets, data labeling, fine-tuning records):
 1. **The Buyer's Risk**: If buyers pay upfront, sellers may deliver garbage, corrupted mock data, or malicious adversarial payloads (e.g., prompt injections).
@@ -19,7 +19,7 @@ In freelance data sourcing and digital deliverable markets (e.g. AI training dat
 
 ---
 
-## ⚡ How It Works (The Lifecycle)
+## How It Works (The Lifecycle)
 
 ![Pact Lifecycle](arch2.png)
 
@@ -46,7 +46,7 @@ Every lifecycle event (`PACT_CREATED`, `AUTHORIZED`, `DELIVERABLE_SUBMITTED`, `R
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Backend**: Python 3.12, Django 5.1, Django REST Framework, Celery, Redis, PostgreSQL
 - **AI Verification**: Groq SDK (`llama3-70b-8192`), Pydantic v2
@@ -55,7 +55,7 @@ Every lifecycle event (`PACT_CREATED`, `AUTHORIZED`, `DELIVERABLE_SUBMITTED`, `R
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### 1. Backend Setup (`pact_core`)
 
@@ -107,7 +107,7 @@ Visit **`http://localhost:3000`** in your browser:
 
 ---
 
-## 🧪 Running Tests
+## Running Tests
 
 ```bash
 cd pact_core
