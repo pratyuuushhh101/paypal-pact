@@ -1,21 +1,21 @@
-# Pact Core 
+# Pact Core
 
 > **Autonomous, AI-Arbitrated Escrow Protocol for Digital Deliverables.**
 
 ![Pact Architecture](arch.png)
 
-Pact eliminates the two-sided trust dilemma in digital transactions. Traditional escrow requires slow, expensive, and subjective human dispute mediators ($20–$50/ticket, taking days). Pact replaces human arbitration with a deterministic quality gate and a fast Groq LLM judge — holding buyer funds via PayPal's two-phase authorization and autonomously settling payments in seconds.
+Pact eliminates the two-sided trust dilemma in digital deliverable transactions. Traditional escrow requires slow, expensive, and subjective human dispute mediators ($20–$50/ticket, taking days to resolve). Pact replaces human arbitration with a deterministic quality gate and a fast Groq LLM judge — holding buyer funds via PayPal's two-phase programmable authorization and autonomously settling payments or issuing refunds in seconds with zero manual intervention.
 
 ---
 
 ## The Core Problem
 
-In freelance data sourcing and digital deliverable markets (e.g. AI training datasets, data labeling, fine-tuning records):
-1. **The Buyer's Risk**: If buyers pay upfront, sellers may deliver garbage, corrupted mock data, or malicious adversarial payloads (e.g., prompt injections).
+In freelance data sourcing, machine learning dataset acquisition, and digital work:
+1. **The Buyer's Risk**: If buyers pay upfront, sellers may deliver garbage, corrupted mock data, or adversarial payloads (such as prompt injection attacks).
 2. **The Seller's Risk**: If sellers deliver first, buyers can take the dataset, refuse release, or demand endless unpaid revisions.
-3. **The Escrow Friction**: Traditional platforms give either the buyer all the leverage (Upwork milestones) or charge high arbitration fees (Escrow.com).
+3. **The Escrow Friction**: Traditional platforms give either the buyer all the leverage or charge high arbitration fees.
 
-**Pact's Solution**: Zero human intervention. Funds are frozen on PayPal upfront, the seller submits the deliverable, an AI agent validates the work against strict criteria, and payments are automatically captured or refunded based on the AI's verdict.
+**Pact's Solution**: Zero human intervention. Funds are frozen on PayPal upfront (`intent: authorize`), the seller submits the deliverable, a two-tiered AI verification engine validates the work against strict criteria, and payments are automatically captured or refunded based on the machine verdict.
 
 ---
 
@@ -28,30 +28,58 @@ In freelance data sourcing and digital deliverable markets (e.g. AI training dat
 ## Key Architectural & Product Decisions
 
 ### 1. Two-Phase Programmable Escrow (PayPal v2 REST)
-Unlike standard e-commerce carts with instant capture (`intent: capture`), Pact uses **`intent: authorize`**. Funds are frozen on the buyer's payment instrument without transferring to the platform or seller. When verification resolves, the backend programmatically captures (`capture_authorization`) or voids (`void_authorization`) the hold with zero platform dispute overhead.
+Unlike standard e-commerce checkouts that capture funds immediately (`intent: capture`), Pact uses **`intent: authorize`**. Funds are frozen on the buyer's payment instrument without transferring to the platform or seller. When verification resolves, the backend programmatically captures (`capture_authorization`) or voids (`void_authorization`) the hold with zero platform dispute overhead. Webhooks are authenticated with cryptographic HMAC signature verification against PayPal's certificate chain.
 
 ### 2. Two-Tiered Verification Pipeline
-- **Gate 1: Deterministic Quality & Structure (`escrow/tasks.py`)**
-  Runs before invoking LLM inference (zero-cost filtering). Ensures the payload is a valid list of at least 2 dictionary items. Fails instantly to `REJECTED` if malformed.
-- **Gate 2: Adversarial & Semantic Analysis (`escrow/services/ai_service.py`)**
+- **Gate 1: Deterministic Quality & Structure (`escrow/tasks.py`)**  
+  Executes before invoking LLM inference (zero-cost filtering). Ensures the payload is a valid JSON array of at least 2 dictionary items. Rejects malformed submissions instantly.
+- **Gate 2: Adversarial & Semantic Analysis (`escrow/services/ai_service.py`)**  
   Evaluated using Groq (`llama3-70b-8192` / LPU inference) with structured JSON output enforced via Pydantic:
-  - **Prompt Injection Defense**: Detects jailbreaks and hidden instructions (e.g., `"IGNORE INSTRUCTIONS"`, `"CONFIRM PAYMENT"`).
-  - **Data Quality**: Flags empty fields, gibberish strings, low-effort filler, and corrupted records.
+  - **Prompt Injection Defense**: Hardened system prompts detect jailbreaks and hidden directives (e.g., `"IGNORE INSTRUCTIONS"`, `"CONFIRM PAYMENT"`).
+  - **Data Quality & Schema Conformance**: Flags empty fields, gibberish strings, low-effort filler, and corrupted records.
 
 ### 3. The 85% Confidence Floor
 Even if the AI reports `passed: true`, if `confidence_score < 0.85`, the platform **fails safe** and voids the hold back to the buyer. This deliberate bias guarantees that real money is never paid out on ambiguous or unverified deliverables.
 
-### 4. Immutable Append-Only Ledger (`PactLedger`)
-Every lifecycle event (`PACT_CREATED`, `AUTHORIZED`, `DELIVERABLE_SUBMITTED`, `REVIEW_STARTED`, `FUNDS_CAPTURED`, `FUNDS_VOIDED`) is recorded in a tamper-proof audit log. Updates and deletions are prevented at the model level (`ValidationError` on update/delete).
+### 4. JWT Authentication & Granular Ownership Permissions
+- Built on Django REST Framework with SimpleJWT (`rest_framework_simplejwt`), providing access/refresh token rotation, blacklisting, and a 30-minute access token lifespan.
+- **Row-Level Access Control**: Custom permissions enforce authorization boundaries:
+  - `IsPactBuyer`: Ensures only the contract creator can confirm PayPal authorizations.
+  - `IsPactSellerOrUnassigned`: Enforces that only the designated seller (or initial submitter for unassigned contracts) can submit deliverables.
+  - `IsPactParty`: Restricts contract details and ledger history to the buyer and seller.
+
+### 5. Immutable Append-Only Ledger (`PactLedger`)
+Every lifecycle event (`PACT_CREATED`, `AUTHORIZED`, `DELIVERABLE_SUBMITTED`, `REVIEW_STARTED`, `AI_VERIFICATION_PASSED`, `FUNDS_CAPTURED`, `FUNDS_VOIDED`) is recorded in a tamper-proof audit log. Updates and deletions are blocked at the model level via `ValidationError`.
 
 ---
 
 ## Tech Stack
 
-- **Backend**: Python 3.12, Django 5.1, Django REST Framework, Celery, Redis, PostgreSQL
-- **AI Verification**: Groq SDK (`llama3-70b-8192`), Pydantic v2
-- **Payment Gateway**: PayPal REST API v2 (Two-phase Authorization & Webhook Cryptographic Verification)
-- **Frontend**: Next.js 16 (App Router), React 19, Tailwind CSS v4, `@paypal/react-paypal-js`, Axios
+| Layer | Technologies |
+|---|---|
+| **Backend Framework** | Python 3.12, Django 5.1, Django REST Framework |
+| **Authentication** | Django SimpleJWT (JSON Web Tokens), Role/Object-level Permissions |
+| **Async Tasks & Queues** | Celery 5.4, Redis 5.0, PostgreSQL |
+| **AI Inference Engine** | Groq SDK (`llama3-70b-8192`), Pydantic v2 |
+| **Payment Gateway** | PayPal REST API v2 (Two-Phase Authorization & Webhook Cryptographic Verification) |
+| **Frontend Application** | Next.js 16 (App Router), React 19, Tailwind CSS v4, `@paypal/react-paypal-js`, Axios |
+
+---
+
+## API Endpoints
+
+### Authentication (`/api/v1/auth/`)
+- `POST /api/v1/auth/register/` — Register user, returns user profile + JWT token pair (`access`, `refresh`).
+- `POST /api/v1/auth/login/` — Authenticate credentials (`email`, `password`), returns JWT tokens.
+- `POST /api/v1/auth/refresh/` — Obtain a refreshed access token using a valid refresh token.
+- `GET /api/v1/auth/profile/` — Retrieve the authenticated user's profile (`Bearer <token>`).
+
+### Escrow Protocol (`/api/v1/pacts/`)
+- `POST /api/v1/pacts/create-pact/` — Initialize contract draft and obtain PayPal authorization URL.
+- `POST /api/v1/pacts/confirm-authorization/` — Confirm buyer PayPal authorization hold (Buyer-only).
+- `POST /api/v1/pacts/{id}/submit-deliverable/` — Submit deliverable dataset for AI evaluation (Seller-only).
+- `GET /api/v1/pacts/{id}/` — View contract status, metadata, and live ledger timeline (Pact parties).
+- `POST /api/v1/webhooks/paypal/` — Cryptographically verified webhook receiver.
 
 ---
 
@@ -62,25 +90,28 @@ Every lifecycle event (`PACT_CREATED`, `AUTHORIZED`, `DELIVERABLE_SUBMITTED`, `R
 ```bash
 cd pact_core
 
-# Setup virtual environment
+# 1. Setup virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
 
-# Configure environment variables
+# 2. Install dependencies
+pip install -r requirements/base.txt
+
+# 3. Configure environment variables
 cp .env.example .env
 # Edit .env and supply your credentials:
+# - DJANGO_SECRET_KEY
 # - PAYPAL_CLIENT_ID & PAYPAL_CLIENT_SECRET
 # - GROQ_API_KEY
-# - DB credentials & CELERY_BROKER_URL
+# - Database credentials & CELERY_BROKER_URL
 
-# Run migrations
+# 4. Run database migrations
 python manage.py migrate
 
-# Start Redis & Celery Worker
+# 5. Start Redis & Celery Worker (in a separate terminal)
 celery -A pact_core worker -l info
 
-# Start Django Development Server
+# 6. Start Django Development Server
 python manage.py runserver 127.0.0.1:8000
 ```
 
@@ -89,35 +120,37 @@ python manage.py runserver 127.0.0.1:8000
 ```bash
 cd ../pact-frontend
 
-# Install dependencies
+# 1. Install dependencies
 npm install
 
-# Configure environment variables
+# 2. Configure environment variables
 cp .env.example .env.local
-# Set NEXT_PUBLIC_PAYPAL_CLIENT_ID and API endpoint
+# Ensure NEXT_PUBLIC_PAYPAL_CLIENT_ID and NEXT_PUBLIC_API_URL are set
 
-# Start Next.js Development Server
+# 3. Start Next.js Development Server
 npm run dev
 ```
 
 Visit **`http://localhost:3000`** in your browser:
-1. **Buyer Dashboard (`/`)**: Input an escrow amount and authorize via PayPal.
-2. **Seller Portal (`/seller`)**: Paste your JSON dataset payload and submit for verification.
-3. **Live Ledger (`/ledger`)**: Track real-time polling updates, Groq confidence scores, and state transitions.
+1. **Authentication (`/login`, `/register`)**: Sign up or log in to obtain JWT access.
+2. **Buyer Dashboard (`/`)**: Input contract terms, amount, and authorize funds via PayPal.
+3. **Seller Portal (`/seller`)**: Paste your JSON dataset payload and submit for automated verification.
+4. **Live Ledger (`/ledger`)**: Track real-time polling updates (every 3 seconds), Groq confidence scores, and audit events.
 
 ---
 
 ## Running Tests
 
+### Backend Unit & Integration Tests
+
 ```bash
 cd pact_core
-python manage.py test escrow.tests
+
+# Run authentication and security tests
+python manage.py test apps.users
 ```
 
 The test suite covers:
-- Unit tests for PayPal API token caching and webhook cryptographic signature verification.
-- Groq AI service verification schema validation and injection rejection.
-- Celery task deterministic gates, resolution logic, and state machine transitions.
-
----
-
+- **Registration & Token Generation**: Password validation, duplicate email prevention, and JWT token issuance.
+- **Login & Refresh Cycle**: Credential verification, token refresh rotation, and 401 unauthorized rejection.
+- **Protected Endpoints**: Row-level object permission enforcement and unauthenticated request rejection on contract creation.
