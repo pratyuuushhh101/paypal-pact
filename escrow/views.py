@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Pact, PactLedger
+from .permissions import IsPactBuyer, IsPactParty, IsPactSellerOrUnassigned
 from .serializers import (
     ConfirmAuthorizationRequestSerializer,
     CreatePactRequestSerializer,
@@ -36,12 +37,20 @@ class PactViewSet(viewsets.ModelViewSet):
         super().__init__(*args, **kwargs)
         self.pact_service: PactService = PactService()
 
+    def get_permissions(self) -> list[Any]:
+        """Instantiate and return the list of permissions that this view requires."""
+        if self.action == "retrieve":
+            return [IsAuthenticated(), IsPactParty()]
+        return super().get_permissions()
+
     def get_queryset(self) -> QuerySet[Pact]:
         """Scope visible pacts to those where the authenticated user is buyer or seller."""
         user = self.request.user
+        if not user or not user.is_authenticated:
+            return Pact.objects.none()
         return self.queryset.filter(Q(buyer=user) | Q(seller=user))
 
-    @action(detail=False, methods=["post"], url_path="create-pact")
+    @action(detail=False, methods=["post"], url_path="create-pact", permission_classes=[IsAuthenticated])
     def create_pact(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Create a new Pact draft and initiate PayPal authorization.
 
@@ -83,7 +92,12 @@ class PactViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-    @action(detail=False, methods=["post"], url_path="confirm-authorization")
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="confirm-authorization",
+        permission_classes=[IsAuthenticated, IsPactBuyer],
+    )
     def confirm_authorization(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Confirm PayPal authorization after buyer approves payment on PayPal.
 
@@ -104,6 +118,7 @@ class PactViewSet(viewsets.ModelViewSet):
             id=validated_data["pact_id"],
             buyer=request.user,
         )
+        self.check_object_permissions(request, pact)
 
         try:
             updated_pact = self.pact_service.confirm_pact_authorization(
@@ -131,7 +146,12 @@ class PactViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-    @action(detail=True, methods=["post"], url_path="submit-deliverable")
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="submit-deliverable",
+        permission_classes=[IsAuthenticated, IsPactSellerOrUnassigned],
+    )
     def submit_deliverable(self, request: Request, pk: str | None = None) -> Response:
         """Submit seller deliverable payload and enqueue background AI verification.
 

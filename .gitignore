@@ -72,3 +72,6 @@ build/
 *.log
 *.pot
 findings.txt
+prompts/
+v2.md
+bullet_points.txt

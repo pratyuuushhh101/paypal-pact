@@ -3,6 +3,7 @@
 Configured with python-decouple for strict separation of secrets and environment variables.
 """
 
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 from decouple import Csv, config
@@ -31,6 +32,7 @@ DJANGO_APPS: list[str] = [
 THIRD_PARTY_APPS: list[str] = [
     "rest_framework",
     "corsheaders",
+    "rest_framework_simplejwt",
 ]
 
 LOCAL_APPS: list[str] = [
@@ -126,12 +128,19 @@ DEFAULT_AUTO_FIELD: str = "django.db.models.BigAutoField"
 # Django REST Framework
 REST_FRAMEWORK: dict[str, Any] = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework.authentication.BasicAuthentication",  # Add this line
-        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+}
+
+SIMPLE_JWT: dict[str, Any] = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
 # Celery Broker & Backend
