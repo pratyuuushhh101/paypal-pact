@@ -165,3 +165,8 @@ GROQ_API_KEY: str = config("GROQ_API_KEY", default="")
 GROQ_MODEL: str = config("GROQ_MODEL", default="llama3-70b-8192")
 GROQ_TIMEOUT: int = config("GROQ_TIMEOUT", default=30, cast=int)
 
+# Email Configuration
+EMAIL_BACKEND: str = config("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
+DEFAULT_FROM_EMAIL: str = config("DEFAULT_FROM_EMAIL", default="notifications@pact-escrow.com")
+
+

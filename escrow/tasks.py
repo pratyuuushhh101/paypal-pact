@@ -7,6 +7,7 @@ from celery import shared_task
 from django.db import transaction
 
 from escrow.services.ai_service import AIVerificationException, EvaluationReport, GroqVerifier
+from escrow.services.notification_service import notification_service
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +249,12 @@ def _request_revision(
         pact.max_attempts,
     )
 
+    notification_service.send_revision_requested_notice(
+        pact=pact,
+        reason=reason,
+        attempt=pact.current_attempt,
+    )
+
 
 def _reject_pact(
     pact: "Pact",
@@ -312,6 +319,8 @@ def _reject_pact(
                     "status_code": getattr(exc, "status_code", None),
                 },
             )
+
+    notification_service.send_resolution_notice(pact=pact, state=pact.state, reason=reason)
 
 
 def _void_pact(
@@ -387,6 +396,8 @@ def _void_pact(
                 },
             )
 
+    notification_service.send_resolution_notice(pact=pact, state=pact.state, reason=reason)
+
 
 def _capture_pact(
     pact: "Pact",
@@ -459,4 +470,10 @@ def _capture_pact(
         "Pact %s finalized as CAPTURED. Capture ID: %s",
         pact.id,
         capture_data.get("id"),
+    )
+
+    notification_service.send_resolution_notice(
+        pact=pact,
+        state=pact.state,
+        reason=ai_reasoning,
     )

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from django.db import transaction
 
 from escrow.models import Pact, PactLedger
+from escrow.services.notification_service import NotificationService
 from escrow.services.paypal_service import PayPalAPIException, PayPalService
 from escrow.tasks import verify_pact_deliverable
 
@@ -19,9 +20,14 @@ logger = logging.getLogger(__name__)
 class PactService:
     """Service encapsulating transactional business logic and state machine transitions for Pacts."""
 
-    def __init__(self, paypal_service: PayPalService | None = None) -> None:
-        """Initialize service with an optional injected PayPalService instance."""
+    def __init__(
+        self,
+        paypal_service: PayPalService | None = None,
+        notification_service: NotificationService | None = None,
+    ) -> None:
+        """Initialize service with optional injected PayPalService and NotificationService instances."""
         self.paypal_service: PayPalService = paypal_service or PayPalService()
+        self.notification_service: NotificationService = notification_service or NotificationService()
 
     @transaction.atomic
     def create_draft_pact(
@@ -157,6 +163,10 @@ class PactService:
         )
 
         logger.info("Pact %s successfully transitioned to AUTHORIZED (Auth ID: %s)", pact.id, authorization_id)
+
+        # Dispatch transactional notification to buyer
+        self.notification_service.send_authorization_notice(pact)
+
         return pact
 
     @transaction.atomic
@@ -229,6 +239,9 @@ class PactService:
             pact.current_attempt,
             pact.max_attempts,
         )
+
+        # Dispatch transactional notification to buyer
+        self.notification_service.send_submission_notice(pact)
 
         # Enqueue verification task upon transaction commit to prevent DB read race conditions
         transaction.on_commit(lambda: verify_pact_deliverable.delay(str(pact.id)))
