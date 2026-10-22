@@ -107,11 +107,40 @@ class GroqVerifier:
             self._client = Groq(api_key=self.api_key, timeout=self.timeout)
         return self._client
 
-    def evaluate_payload(self, payload: list[dict[str, Any]]) -> EvaluationReport:
+    @staticmethod
+    def build_prompt(rubric: str | None = None) -> str:
+        """Construct dynamic system prompt with optional buyer acceptance criteria.
+
+        Args:
+            rubric: Optional domain-specific requirements established by the buyer.
+
+        Returns:
+            The complete system prompt string.
+        """
+        if not rubric or not rubric.strip():
+            return SYSTEM_PROMPT
+
+        buyer_section: str = (
+            "\n4. BUYER-SPECIFIC ACCEPTANCE CRITERIA:\n"
+            "The buyer has established the following domain-specific requirements for this deliverable:\n"
+            '"""\n'
+            f"{rubric.strip()}\n"
+            '"""\n'
+            "You must evaluate the payload strictly against these buyer criteria in addition to general security and schema rules.\n"
+            'If the data contradicts these guidelines, set "passed" to false and cite the criteria in "reasoning".\n'
+        )
+        return f"{SYSTEM_PROMPT}\n{buyer_section}"
+
+    def evaluate_payload(
+        self,
+        payload: list[dict[str, Any]],
+        rubric: str | None = None,
+    ) -> EvaluationReport:
         """Evaluate submitted dataset using Groq API with JSON object response enforcement.
 
         Args:
             payload: List of dictionary records submitted by the seller.
+            rubric: Optional buyer quality criteria and acceptance guidelines.
 
         Returns:
             EvaluationReport containing validation decision, confidence, reasoning, and flags.
@@ -131,11 +160,13 @@ class GroqVerifier:
             self.model,
         )
 
+        system_prompt: str = self.build_prompt(rubric)
+
         try:
             chat_completion = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {
                         "role": "user",
                         "content": (

@@ -31,6 +31,8 @@ class PactService:
         currency: str = "USD",
         deliverable_type: str = "JSON_DATASET",
         seller: Any | None = None,
+        quality_rubric: str = "",
+        confidence_threshold: Decimal = Decimal("0.85"),
     ) -> tuple[Pact, str]:
         """Create a new Pact in DRAFT state, initiate PayPal authorization order, and record audit log.
 
@@ -40,6 +42,8 @@ class PactService:
             currency: Three-letter ISO currency code.
             deliverable_type: Deliverable specification identifier.
             seller: Optional seller user instance.
+            quality_rubric: Optional buyer acceptance criteria for verification.
+            confidence_threshold: Minimum AI confidence required for fund capture.
 
         Returns:
             Tuple of (Pact instance, PayPal buyer approval URL).
@@ -53,6 +57,8 @@ class PactService:
             amount=amount,
             currency=currency,
             deliverable_type=deliverable_type,
+            quality_rubric=quality_rubric,
+            confidence_threshold=confidence_threshold,
             state=Pact.State.DRAFT,
         )
 
@@ -93,6 +99,8 @@ class PactService:
                 "currency": currency,
                 "deliverable_type": deliverable_type,
                 "approve_url": approve_url,
+                "quality_rubric": quality_rubric,
+                "confidence_threshold": str(confidence_threshold),
             },
         )
 

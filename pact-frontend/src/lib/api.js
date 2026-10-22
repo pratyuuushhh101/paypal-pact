@@ -86,14 +86,23 @@ export function extractErrorMessage(error, fallbackMessage) {
  *
  * @param {string|number} amount - Escrow funding total in USD.
  * @param {string} [deliverableType="JSON_DATASET"] - Contract deliverable format.
+ * @param {string} [qualityRubric=""] - Buyer acceptance guidelines and criteria.
+ * @param {number} [confidenceThreshold=0.85] - Required minimum AI confidence score (0.50 - 0.99).
  * @returns {Promise<{ pact: Object, approve_url: string }>}
  */
-export async function createPact(amount, deliverableType = 'JSON_DATASET') {
+export async function createPact(
+  amount,
+  deliverableType = 'JSON_DATASET',
+  qualityRubric = '',
+  confidenceThreshold = 0.85
+) {
   try {
     const response = await apiClient.post('/pacts/create-pact/', {
       amount: parseFloat(amount).toFixed(2),
       currency: 'USD',
       deliverable_type: deliverableType,
+      quality_rubric: qualityRubric,
+      confidence_threshold: parseFloat(confidenceThreshold).toFixed(2),
     });
     return response.data;
   } catch (error) {

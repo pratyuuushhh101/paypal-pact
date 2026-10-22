@@ -40,6 +40,8 @@ class PactSerializer(serializers.ModelSerializer):
             "seller_email",
             "deliverable_type",
             "deliverable_payload",
+            "quality_rubric",
+            "confidence_threshold",
             "amount",
             "currency",
             "paypal_order_id",
@@ -57,6 +59,8 @@ class PactSerializer(serializers.ModelSerializer):
             "state",
             "buyer",
             "deliverable_payload",
+            "quality_rubric",
+            "confidence_threshold",
             "paypal_order_id",
             "paypal_authorization_id",
             "max_attempts",
@@ -94,6 +98,21 @@ class CreatePactRequestSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
         help_text="Optional ID of the seller user.",
+    )
+    quality_rubric = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        help_text="Buyer quality requirements and acceptance guidelines.",
+    )
+    confidence_threshold = serializers.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        required=False,
+        default=Decimal("0.85"),
+        min_value=Decimal("0.50"),
+        max_value=Decimal("0.99"),
+        help_text="Required minimum AI confidence score (0.50 - 0.99).",
     )
 
     def validate_currency(self, value: str) -> str:

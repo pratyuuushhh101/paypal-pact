@@ -23,6 +23,48 @@ class GroqVerifierUnitTests(TestCase):
         """Initialize verifier with dummy test API key."""
         self.verifier: GroqVerifier = GroqVerifier(api_key="gsk_test_key", model="llama3-70b-8192")
 
+    def test_build_prompt_without_rubric_returns_base_system_prompt(self) -> None:
+        """Verify building prompt without rubric returns the default SYSTEM_PROMPT."""
+        from escrow.services.ai_service import SYSTEM_PROMPT
+        self.assertEqual(self.verifier.build_prompt(None), SYSTEM_PROMPT)
+        self.assertEqual(self.verifier.build_prompt(""), SYSTEM_PROMPT)
+        self.assertEqual(self.verifier.build_prompt("   "), SYSTEM_PROMPT)
+
+    def test_build_prompt_with_rubric_appends_buyer_criteria_section(self) -> None:
+        """Verify building prompt with rubric appends buyer-specific acceptance section."""
+        rubric = "All JSON items must have non-negative float amounts."
+        prompt = self.verifier.build_prompt(rubric)
+
+        self.assertIn("BUYER-SPECIFIC ACCEPTANCE CRITERIA", prompt)
+        self.assertIn("All JSON items must have non-negative float amounts.", prompt)
+        self.assertIn("You must evaluate the payload strictly against these buyer criteria", prompt)
+
+    @patch("groq.resources.chat.completions.Completions.create")
+    def test_evaluate_payload_dispatches_dynamic_rubric_prompt(self, mock_create: MagicMock) -> None:
+        """Verify evaluate_payload forwards buyer rubric in the system prompt to Groq API."""
+        mock_response = MagicMock()
+        mock_choice = MagicMock()
+        mock_choice.message.content = json.dumps({
+            "passed": True,
+            "confidence_score": 0.92,
+            "reasoning": "Meets buyer criteria.",
+            "flags": [],
+        })
+        mock_response.choices = [mock_choice]
+        mock_create.return_value = mock_response
+
+        payload = [{"id": 1, "score": 99}, {"id": 2, "score": 88}]
+        rubric = "Each record must have a score >= 80."
+
+        report = self.verifier.evaluate_payload(payload, rubric=rubric)
+
+        self.assertTrue(report.passed)
+        mock_create.assert_called_once()
+        messages = mock_create.call_args[1]["messages"]
+        system_content = messages[0]["content"]
+        self.assertIn("BUYER-SPECIFIC ACCEPTANCE CRITERIA", system_content)
+        self.assertIn(rubric, system_content)
+
     @patch("groq.resources.chat.completions.Completions.create")
     def test_evaluate_payload_success_parses_json_response(self, mock_create: MagicMock) -> None:
         """Test valid JSON from Groq is parsed into EvaluationReport Pydantic model."""
@@ -458,4 +500,77 @@ class VerifyPactDeliverableTaskTests(TestCase):
         void_ledger = PactLedger.objects.filter(pact=pact, action="FUNDS_VOIDED").first()
         self.assertIsNotNone(void_ledger)
         self.assertEqual(void_ledger.details["trigger"], "SEMANTIC_FAILURE")
+
+    @patch.object(GroqVerifier, "evaluate_payload")
+    @patch.object(PayPalService, "capture_authorization")
+    def test_custom_confidence_threshold_honored_for_capture(
+        self, mock_capture: MagicMock, mock_evaluate: MagicMock
+    ) -> None:
+        """Pact with lower custom confidence_threshold (0.70) captures when confidence is 0.75."""
+        mock_capture.return_value = {
+            "id": "CAPTURE-CUSTOM-70",
+            "status": "COMPLETED",
+        }
+        mock_evaluate.return_value = EvaluationReport(
+            passed=True,
+            confidence_score=0.75,
+            reasoning="Meets lower confidence requirement for experimental dataset.",
+            flags=[],
+        )
+
+        pact = Pact.objects.create(
+            buyer=self.buyer,
+            seller=self.seller,
+            amount=Decimal("150.00"),
+            state=Pact.State.SUBMITTED,
+            paypal_authorization_id="AUTH-CUSTOM-70",
+            confidence_threshold=Decimal("0.70"),
+            quality_rubric="Experimental sentiment scores allowed.",
+            deliverable_payload=[
+                {"id": 1, "text": "acceptable sample A"},
+                {"id": 2, "text": "acceptable sample B"},
+            ],
+        )
+
+        verify_pact_deliverable(str(pact.id))
+
+        pact.refresh_from_db()
+        self.assertEqual(pact.state, Pact.State.CAPTURED)
+        mock_capture.assert_called_once_with("AUTH-CUSTOM-70")
+
+    @patch.object(GroqVerifier, "evaluate_payload")
+    @patch.object(PayPalService, "void_authorization")
+    def test_custom_confidence_threshold_honored_for_revision(
+        self, mock_void: MagicMock, mock_evaluate: MagicMock
+    ) -> None:
+        """Pact with higher custom threshold (0.95) requests revision when confidence is 0.90."""
+        mock_evaluate.return_value = EvaluationReport(
+            passed=True,
+            confidence_score=0.90,
+            reasoning="High quality but does not meet strict 0.95 threshold.",
+            flags=[],
+        )
+
+        pact = Pact.objects.create(
+            buyer=self.buyer,
+            seller=self.seller,
+            amount=Decimal("350.00"),
+            state=Pact.State.SUBMITTED,
+            paypal_authorization_id="AUTH-CUSTOM-95",
+            confidence_threshold=Decimal("0.95"),
+            quality_rubric="Zero tolerance for low-confidence data.",
+            deliverable_payload=[
+                {"id": 1, "text": "high quality A"},
+                {"id": 2, "text": "high quality B"},
+            ],
+            current_attempt=1,
+            max_attempts=3,
+        )
+
+        verify_pact_deliverable(str(pact.id))
+
+        pact.refresh_from_db()
+        self.assertEqual(pact.state, Pact.State.REVISION_REQUESTED)
+        self.assertIn("0.95", pact.last_rejection_reason)
+        mock_void.assert_not_called()
 

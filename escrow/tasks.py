@@ -122,7 +122,7 @@ def verify_pact_deliverable(self, pact_id: str) -> None:
     # ------------------------------------------------------------------
     verifier: GroqVerifier = GroqVerifier()
     try:
-        report: EvaluationReport = verifier.evaluate_payload(payload)
+        report: EvaluationReport = verifier.evaluate_payload(payload, rubric=pact.quality_rubric)
     except AIVerificationException as exc:
         logger.exception("AI evaluation error for Pact %s: %s", pact_id, exc)
         PactLedger.objects.create(
@@ -143,13 +143,13 @@ def verify_pact_deliverable(self, pact_id: str) -> None:
     # ------------------------------------------------------------------
     # Stage 4: Resolution State Machine
     # ------------------------------------------------------------------
-    # If report.passed is True AND report.confidence_score >= 0.85, proceed to _capture_pact.
-    # Otherwise, pass report.reasoning to _void_pact to release the funds.
-    if report.passed and report.confidence_score >= 0.85:
+    threshold: float = float(pact.confidence_threshold) if pact.confidence_threshold is not None else 0.85
+    if report.passed and report.confidence_score >= threshold:
         logger.info(
-            "Pact %s PASSED AI verification (confidence: %.2f >= 0.85). Capturing funds.",
+            "Pact %s PASSED AI verification (confidence: %.2f >= %.2f). Capturing funds.",
             pact_id,
             report.confidence_score,
+            threshold,
         )
         _capture_pact(
             pact=pact,
@@ -160,16 +160,17 @@ def verify_pact_deliverable(self, pact_id: str) -> None:
         )
     else:
         void_reason: str = report.reasoning
-        if report.passed and report.confidence_score < 0.85:
+        if report.passed and report.confidence_score < threshold:
             void_reason = (
                 f"Evaluation passed but confidence score ({report.confidence_score:.2f}) "
-                f"did not meet the minimum threshold (0.85). {report.reasoning}"
+                f"did not meet the minimum threshold ({threshold:.2f}). {report.reasoning}"
             )
         logger.warning(
-            "Pact %s FAILED verification threshold (passed=%s, confidence=%.2f). Checking retry budget: %s",
+            "Pact %s FAILED verification threshold (passed=%s, confidence=%.2f, required=%.2f). Checking retry budget: %s",
             pact_id,
             report.passed,
             report.confidence_score,
+            threshold,
             void_reason,
         )
         if pact.current_attempt < pact.max_attempts:

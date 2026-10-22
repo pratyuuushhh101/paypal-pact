@@ -62,6 +62,17 @@ class Pact(models.Model):
         blank=True,
         help_text=_("Submitted deliverable dataset or payload awaiting verification."),
     )
+    quality_rubric = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Buyer requirements and acceptance guidelines."),
+    )
+    confidence_threshold = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        default=Decimal("0.85"),
+        help_text=_("Required minimum AI confidence score (0.50 - 0.99)."),
+    )
     amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,

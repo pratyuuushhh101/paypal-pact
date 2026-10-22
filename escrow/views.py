@@ -1,3 +1,4 @@
+from decimal import Decimal
 import json
 import logging
 from typing import Any
@@ -73,6 +74,8 @@ class PactViewSet(viewsets.ModelViewSet):
                 amount=validated_data["amount"],
                 currency=validated_data.get("currency", "USD"),
                 deliverable_type=validated_data.get("deliverable_type", "JSON_DATASET"),
+                quality_rubric=validated_data.get("quality_rubric", ""),
+                confidence_threshold=validated_data.get("confidence_threshold", Decimal("0.85")),
             )
         except PayPalAPIException as exc:
             return Response(

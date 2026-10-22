@@ -8,12 +8,15 @@ import ProtectedRoute from './components/ProtectedRoute';
 
 export default function BuyerDashboardPage() {
   const [amount, setAmount] = useState('150.00');
+  const [rubric, setRubric] = useState('');
+  const [threshold, setThreshold] = useState(0.85);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const deliverableType = 'JSON_DATASET';
 
   // API & Contract State
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [pactData, setPactData] = useState(null); // { id, paypalOrderId, amount, currency }
+  const [pactData, setPactData] = useState(null); // { id, paypalOrderId, amount, currency, qualityRubric, confidenceThreshold }
   const [isApproved, setIsApproved] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -32,7 +35,7 @@ export default function BuyerDashboardPage() {
 
     try {
       setLoading(true);
-      const data = await createPact(parsedAmount, deliverableType);
+      const data = await createPact(parsedAmount, deliverableType, rubric.trim(), threshold);
 
       const pactObj = data.pact || data;
       setPactData({
@@ -40,6 +43,8 @@ export default function BuyerDashboardPage() {
         paypalOrderId: pactObj.paypal_order_id,
         amount: pactObj.amount || parsedAmount.toFixed(2),
         currency: pactObj.currency || 'USD',
+        qualityRubric: pactObj.quality_rubric || rubric.trim(),
+        confidenceThreshold: pactObj.confidence_threshold || threshold,
       });
     } catch (err) {
       setError(err.message);
@@ -56,6 +61,9 @@ export default function BuyerDashboardPage() {
     setIsApproved(false);
     setError(null);
     setAmount('150.00');
+    setRubric('');
+    setThreshold(0.85);
+    setShowAdvanced(false);
     setCopied(false);
   };
 
@@ -145,6 +153,83 @@ export default function BuyerDashboardPage() {
               </p>
             </div>
 
+            {/* Quality Requirements / Rubric */}
+            <div>
+              <label htmlFor="rubric" className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                Acceptance Rubric & Quality Guidelines (Optional)
+              </label>
+              <textarea
+                id="rubric"
+                rows={3}
+                disabled={loading}
+                value={rubric}
+                onChange={(e) => setRubric(e.target.value)}
+                placeholder="e.g., Must contain valid customer records with non-null email and phone fields. Exclude test accounts."
+                className="mt-1.5 block w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                Supplied guidelines are injected into the Groq AI judge prompt to enforce domain-specific acceptance criteria.
+              </p>
+            </div>
+
+            {/* Advanced Settings Collapsible */}
+            <div className="rounded-xl border border-slate-800/80 bg-slate-950/40 p-3.5">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex w-full items-center justify-between text-xs font-semibold text-slate-300 hover:text-white transition-colors"
+              >
+                <span className="flex items-center gap-1.5">
+                  <svg className="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                  </svg>
+                  Advanced Settings
+                </span>
+                <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                  {showAdvanced ? 'Hide' : 'Configure AI Threshold'}
+                  <svg
+                    className={`h-3 w-3 transform transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </span>
+              </button>
+
+              {showAdvanced && (
+                <div className="mt-3.5 pt-3.5 border-t border-slate-800/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="threshold" className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                      AI Confidence Floor
+                    </label>
+                    <span className="font-mono text-xs font-bold text-emerald-400">
+                      {Math.round(threshold * 100)}%{Math.abs(threshold - 0.85) < 0.01 ? ' (Recommended)' : ''}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Contracts fail-safe and refund if AI certainty falls below this threshold.
+                  </p>
+                  <div className="pt-2 flex items-center gap-3">
+                    <span className="font-mono text-[10px] text-slate-500">50%</span>
+                    <input
+                      id="threshold"
+                      type="range"
+                      min="0.50"
+                      max="0.99"
+                      step="0.05"
+                      disabled={loading}
+                      value={threshold}
+                      onChange={(e) => setThreshold(parseFloat(e.target.value))}
+                      className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-slate-800 accent-emerald-500 disabled:opacity-50"
+                    />
+                    <span className="font-mono text-[10px] text-slate-500">99%</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <button
               type="submit"
               disabled={loading}
@@ -181,6 +266,20 @@ export default function BuyerDashboardPage() {
                 <span>PayPal Order:</span>
                 <span className="font-mono text-slate-200">{pactData.paypalOrderId}</span>
               </div>
+              {pactData.confidenceThreshold && (
+                <div className="flex justify-between text-slate-400">
+                  <span>AI Confidence Floor:</span>
+                  <span className="font-mono text-slate-200">
+                    {Math.round(parseFloat(pactData.confidenceThreshold) * 100)}%
+                  </span>
+                </div>
+              )}
+              {pactData.qualityRubric && (
+                <div className="text-slate-400 pt-1.5 border-t border-slate-800/60">
+                  <span className="block text-[10px] uppercase font-semibold text-slate-500">Quality Rubric:</span>
+                  <p className="font-mono text-slate-300 text-[11px] line-clamp-2 mt-0.5">{pactData.qualityRubric}</p>
+                </div>
+              )}
             </div>
 
             <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-300">
@@ -248,6 +347,14 @@ export default function BuyerDashboardPage() {
                 <span className="text-slate-400">Status:</span>
                 <span className="font-medium text-emerald-400">AUTHORIZED (Escrow Locked)</span>
               </div>
+              {pactData?.confidenceThreshold && (
+                <div className="flex justify-between text-slate-400">
+                  <span>AI Confidence Floor:</span>
+                  <span className="font-mono text-slate-200">
+                    {Math.round(parseFloat(pactData.confidenceThreshold) * 100)}%
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col gap-2 pt-2">
