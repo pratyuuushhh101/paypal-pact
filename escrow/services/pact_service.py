@@ -155,6 +155,10 @@ class PactService:
     def submit_pact_deliverable(self, pact: Pact, payload: dict[str, Any]) -> Pact:
         """Submit seller deliverable payload and queue asynchronous verification.
 
+        Accepts submissions from both AUTHORIZED state (first attempt) and
+        REVISION_REQUESTED state (subsequent resubmission attempts). The
+        current_attempt counter is incremented on every resubmission.
+
         Args:
             pact: The target Pact instance.
             payload: Deliverable dataset or data dictionary submitted by the seller.
@@ -163,31 +167,60 @@ class PactService:
             Updated Pact instance in SUBMITTED state.
 
         Raises:
-            ValueError: If pact is not in AUTHORIZED state or payload is empty.
+            ValueError: If pact is not in AUTHORIZED or REVISION_REQUESTED state,
+                        or if the payload is empty.
         """
-        if pact.state != Pact.State.AUTHORIZED:
+        allowed_states: tuple[str, ...] = (
+            Pact.State.AUTHORIZED,
+            Pact.State.REVISION_REQUESTED,
+        )
+        if pact.state not in allowed_states:
             raise ValueError(
                 f"Cannot submit deliverable for Pact {pact.id} from state '{pact.state}'. "
-                f"Pact must be in AUTHORIZED state."
+                f"Pact must be in AUTHORIZED state or REVISION_REQUESTED state."
             )
 
         if not payload:
             raise ValueError("Deliverable payload cannot be empty.")
 
+        is_resubmission: bool = pact.state == Pact.State.REVISION_REQUESTED
+        if is_resubmission:
+            pact.current_attempt += 1
+            logger.info(
+                "Resubmission detected for Pact %s. Incrementing attempt to %d/%d.",
+                pact.id,
+                pact.current_attempt,
+                pact.max_attempts,
+            )
+
         pact.deliverable_payload = payload
         pact.state = Pact.State.SUBMITTED
-        pact.save(update_fields=["deliverable_payload", "state", "updated_at"])
 
+        update_fields: list[str] = ["deliverable_payload", "state", "updated_at"]
+        if is_resubmission:
+            update_fields.append("current_attempt")
+
+        pact.save(update_fields=update_fields)
+
+        action: str = "DELIVERABLE_RESUBMITTED" if is_resubmission else "DELIVERABLE_SUBMITTED"
         PactLedger.objects.create(
             pact=pact,
-            action="DELIVERABLE_SUBMITTED",
+            action=action,
             details={
                 "deliverable_type": pact.deliverable_type,
                 "payload_keys": list(payload.keys()) if isinstance(payload, dict) else [],
+                "attempt": pact.current_attempt,
+                "max_attempts": pact.max_attempts,
             },
         )
 
-        logger.info("Deliverable submitted for Pact %s. Enqueuing Celery verification task.", pact.id)
+        logger.info(
+            "Deliverable %s for Pact %s (attempt %d/%d). Enqueuing Celery verification task.",
+            "resubmitted" if is_resubmission else "submitted",
+            pact.id,
+            pact.current_attempt,
+            pact.max_attempts,
+        )
 
         # Enqueue verification task upon transaction commit to prevent DB read race conditions
         transaction.on_commit(lambda: verify_pact_deliverable.delay(str(pact.id)))

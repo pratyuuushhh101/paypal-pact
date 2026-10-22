@@ -310,24 +310,35 @@ class PayPalWebhookView(APIView):
                 PactLedger.objects.create(
                     pact=pact,
                     action="AUTHORIZED_VIA_WEBHOOK",
-                    details={"paypal_authorization_id": auth_id}
+                    details={
+                        "paypal_order_id": order_id,
+                        "paypal_authorization_id": auth_id,
+                        "webhook_event_id": event_payload.get("id"),
+                    },
                 )
         except Pact.DoesNotExist:
             logger.warning(f"Webhook received for unknown order: {order_id}")
+
     def _handle_authorization_voided(self, resource: dict, event_payload: dict):
         """Update contract state if the authorization is voided externally or expires."""
         auth_id = resource.get("id")
         try:
             pact = Pact.objects.get(paypal_authorization_id=auth_id)
-            if pact.state not in ["VOIDED", "REJECTED"]:  # Changed from status
-                pact.state = "VOIDED"  # Changed from status
-                pact.save(update_fields=["state"])  # Changed from status
+            if pact.state not in [Pact.State.VOIDED, Pact.State.REJECTED]:
+                previous_state = pact.state
+                pact.state = Pact.State.VOIDED
+                pact.save(update_fields=["state", "updated_at"])
                 
                 from escrow.models import PactLedger
                 PactLedger.objects.create(
                     pact=pact,
                     action="FUNDS_VOIDED_EXTERNALLY",
-                    details={"reason": "PayPal notification received for voided authorization"}
+                    details={
+                        "paypal_authorization_id": auth_id,
+                        "previous_state": previous_state,
+                        "webhook_event_id": event_payload.get("id"),
+                        "reason": "PayPal notification received for voided authorization",
+                    },
                 )
         except Pact.DoesNotExist:
             pass

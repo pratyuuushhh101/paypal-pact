@@ -40,7 +40,8 @@ export default function LedgerPage() {
         setError(null);
         setLoading(false);
 
-        // Stop polling if the contract is finalized
+        // Stop polling ONLY if the contract is finalized in a terminal state
+        // Ensure REVISION_REQUESTED is NOT treated as a terminal state so polling continues or resumes if refreshed
         const terminalStates = ['CAPTURED', 'VOIDED', 'REJECTED'];
         if (terminalStates.includes(data.state)) {
           setIsPolling(false);
@@ -74,14 +75,35 @@ export default function LedgerPage() {
     setActivePactId(pactIdInput.trim());
   };
 
-  const getEventStyling = (action) => {
+  const getEventConfig = (action) => {
     switch (action) {
+      case 'REVISION_REQUESTED':
+        return {
+          color: 'text-amber-400',
+          bg: 'bg-amber-500/20',
+          border: 'border-amber-500/30',
+          badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+          title: 'Revision Requested by AI Judge',
+          summary: 'Revision Requested by AI Judge',
+          icon: 'refresh',
+        };
+      case 'DELIVERABLE_RESUBMITTED':
+        return {
+          color: 'text-amber-400',
+          bg: 'bg-amber-500/20',
+          border: 'border-amber-500/30',
+          badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+          title: 'Revised Deliverable Submitted',
+          summary: 'Revised Deliverable Submitted',
+          icon: 'refresh',
+        };
       case 'PACT_CREATED':
         return {
           color: 'text-slate-300',
           bg: 'bg-slate-500/20',
           border: 'border-slate-500/30',
           title: 'Contract Drafted',
+          summary: 'Contract Drafted',
         };
       case 'AUTHORIZED':
       case 'AUTHORIZED_VIA_WEBHOOK':
@@ -90,6 +112,7 @@ export default function LedgerPage() {
           bg: 'bg-emerald-500/20',
           border: 'border-emerald-500/30',
           title: 'Funds Locked in Escrow',
+          summary: 'Funds Locked in Escrow',
         };
       case 'DELIVERABLE_SUBMITTED':
         return {
@@ -97,6 +120,7 @@ export default function LedgerPage() {
           bg: 'bg-amber-500/20',
           border: 'border-amber-500/30',
           title: 'Dataset Submitted',
+          summary: 'Dataset Submitted',
         };
       case 'REVIEW_STARTED':
         return {
@@ -104,6 +128,7 @@ export default function LedgerPage() {
           bg: 'bg-indigo-500/20',
           border: 'border-indigo-500/30',
           title: 'Groq AI Verification In Progress',
+          summary: 'Groq AI Verification In Progress',
         };
       case 'AI_VERIFICATION_PASSED':
         return {
@@ -111,6 +136,7 @@ export default function LedgerPage() {
           bg: 'bg-fuchsia-500/20',
           border: 'border-fuchsia-500/30',
           title: 'Groq AI Verification Passed',
+          summary: 'Groq AI Verification Passed',
         };
       case 'VERIFICATION_FAILED':
       case 'AI_VERIFICATION_FAILED':
@@ -119,6 +145,7 @@ export default function LedgerPage() {
           bg: 'bg-rose-500/20',
           border: 'border-rose-500/30',
           title: 'AI Verification Rejected',
+          summary: 'AI Verification Rejected',
         };
       case 'FUNDS_CAPTURED':
         return {
@@ -126,6 +153,7 @@ export default function LedgerPage() {
           bg: 'bg-emerald-500/20',
           border: 'border-emerald-500/30',
           title: 'Payment Settled (Funds Captured)',
+          summary: 'Payment Settled (Funds Captured)',
         };
       case 'FUNDS_VOIDED':
       case 'FUNDS_VOIDED_EXTERNALLY':
@@ -134,6 +162,7 @@ export default function LedgerPage() {
           bg: 'bg-rose-500/20',
           border: 'border-rose-500/30',
           title: 'Escrow Refunded (Authorization Voided)',
+          summary: 'Escrow Refunded (Authorization Voided)',
         };
       case 'AI_SERVICE_ERROR':
         return {
@@ -141,6 +170,7 @@ export default function LedgerPage() {
           bg: 'bg-amber-500/20',
           border: 'border-amber-500/30',
           title: 'AI Service Communication Warning',
+          summary: 'AI Service Communication Warning',
         };
       case 'CAPTURE_FAILED':
       case 'VOID_FAILED':
@@ -149,6 +179,7 @@ export default function LedgerPage() {
           bg: 'bg-rose-500/20',
           border: 'border-rose-500/30',
           title: 'PayPal Gateway Warning',
+          summary: 'PayPal Gateway Warning',
         };
       default:
         return {
@@ -156,9 +187,12 @@ export default function LedgerPage() {
           bg: 'bg-slate-800',
           border: 'border-slate-700',
           title: action.replace(/_/g, ' '),
+          summary: action.replace(/_/g, ' '),
         };
     }
   };
+
+  const getEventStyling = getEventConfig;
 
   const entries = pactData?.ledger_entries || [];
 
@@ -236,6 +270,11 @@ export default function LedgerPage() {
                       Analyzing
                     </span>
                   )}
+                  {pactData.state === 'REVISION_REQUESTED' && (
+                    <span className="rounded bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-400">
+                      Revision Requested
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="text-right">
@@ -249,7 +288,7 @@ export default function LedgerPage() {
             ) : (
               <div className="relative border-l-2 border-slate-800 ml-4 pl-8 space-y-6">
                 {[...entries].reverse().map((entry) => {
-                  const style = getEventStyling(entry.action);
+                  const style = getEventConfig(entry.action);
 
                   return (
                     <div key={entry.id} className="relative">
@@ -258,7 +297,19 @@ export default function LedgerPage() {
 
                       <div className="rounded-xl border border-slate-800/60 bg-slate-950/40 p-4 shadow-sm transition-all hover:border-slate-700/80">
                         <div className="flex justify-between items-start mb-2">
-                          <h3 className={`text-sm font-bold ${style.color}`}>{style.title}</h3>
+                          <div className="flex items-center gap-2">
+                            {style.icon === 'refresh' && (
+                              <svg className="h-4 w-4 text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                            )}
+                            <h3 className={`text-sm font-bold ${style.color}`}>{style.summary || style.title}</h3>
+                            {style.badgeColor && (
+                              <span className={`rounded border px-1.5 py-0.5 text-[10px] font-mono font-medium ${style.badgeColor}`}>
+                                REVISION
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[10px] text-slate-500 font-mono">
                             {new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                           </span>
@@ -267,7 +318,21 @@ export default function LedgerPage() {
                         {/* Event Details formatting */}
                         {entry.details && Object.keys(entry.details).length > 0 && (
                           <div className="text-xs text-slate-400 space-y-1.5 mt-3 border-t border-slate-800/50 pt-2">
+                            {/* Render attempt metadata: "Attempt {details.attempt} of {details.max_attempts}" */}
+                            {entry.details.attempt && entry.details.max_attempts && (
+                              <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-300 mb-2">
+                                <span>Submission Attempt:</span>
+                                <span className="font-mono">
+                                  Attempt {entry.details.attempt} of {entry.details.max_attempts}
+                                </span>
+                              </div>
+                            )}
+
                             {Object.entries(entry.details).map(([key, value]) => {
+                              // Skip raw attempt keys if already displayed in attempt metadata above
+                              if (['attempt', 'max_attempts', 'attempts_remaining'].includes(key)) {
+                                return null;
+                              }
                               if (key === 'confidence_score' && typeof value === 'number') {
                                 return (
                                   <div key={key} className="flex justify-between bg-fuchsia-500/10 border border-fuchsia-500/20 rounded p-2 mt-2">
@@ -282,7 +347,7 @@ export default function LedgerPage() {
                                     <span className="text-slate-500">Flags:</span>
                                     {value.map((flag, idx) => (
                                       <span key={idx} className="rounded bg-rose-500/10 border border-rose-500/20 px-1.5 py-0.5 text-[10px] font-mono text-rose-300">
-                                        {flag}
+                                        [{flag}]
                                       </span>
                                     ))}
                                   </div>

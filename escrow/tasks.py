@@ -50,7 +50,6 @@ def verify_pact_deliverable(self, pact_id: str) -> None:
             pact.state,
         )
         return
-
     # ------------------------------------------------------------------
     # Stage 1: Transition to IN_REVIEW
     # ------------------------------------------------------------------
@@ -96,7 +95,24 @@ def verify_pact_deliverable(self, pact_id: str) -> None:
         logger.warning(
             "Deterministic check FAILED for Pact %s: %s", pact_id, deterministic_reason,
         )
-        _reject_pact(pact, deterministic_reason, paypal_service)
+        if pact.current_attempt < pact.max_attempts:
+            logger.info(
+                "Pact %s has %d attempt(s) remaining. Requesting revision instead of rejecting.",
+                pact_id,
+                pact.max_attempts - pact.current_attempt,
+            )
+            _request_revision(
+                pact=pact,
+                reason=deterministic_reason,
+                flags=["DETERMINISTIC_FAILURE"],
+            )
+        else:
+            logger.warning(
+                "Pact %s exhausted all %d attempt(s) on deterministic check. Rejecting and voiding.",
+                pact_id,
+                pact.max_attempts,
+            )
+            _reject_pact(pact, deterministic_reason, paypal_service)
         return
 
     logger.info("Deterministic check PASSED for Pact %s.", pact_id)
@@ -150,19 +166,86 @@ def verify_pact_deliverable(self, pact_id: str) -> None:
                 f"did not meet the minimum threshold (0.85). {report.reasoning}"
             )
         logger.warning(
-            "Pact %s FAILED verification threshold (passed=%s, confidence=%.2f). Voiding hold: %s",
+            "Pact %s FAILED verification threshold (passed=%s, confidence=%.2f). Checking retry budget: %s",
             pact_id,
             report.passed,
             report.confidence_score,
             void_reason,
         )
-        _void_pact(
+        if pact.current_attempt < pact.max_attempts:
+            logger.info(
+                "Pact %s has %d attempt(s) remaining. Requesting revision (hold preserved).",
+                pact_id,
+                pact.max_attempts - pact.current_attempt,
+            )
+            _request_revision(
+                pact=pact,
+                reason=void_reason,
+                flags=report.flags,
+            )
+        else:
+            logger.warning(
+                "Pact %s exhausted all %d attempt(s). Voiding PayPal hold.",
+                pact_id,
+                pact.max_attempts,
+            )
+            _void_pact(
+                pact=pact,
+                reason=void_reason,
+                paypal_service=paypal_service,
+                confidence_score=report.confidence_score,
+                flags=report.flags,
+            )
+
+
+def _request_revision(
+    pact: "Pact",
+    reason: str,
+    flags: list[str] | None = None,
+) -> None:
+    """Transition a pact to REVISION_REQUESTED without voiding the PayPal authorization hold.
+
+    Called when the deliverable fails verification but the seller still has
+    remaining submission attempts (``current_attempt < max_attempts``).
+    The PayPal authorization hold is intentionally preserved so funds remain
+    escrowed for the next attempt.
+
+    Args:
+        pact: The Pact instance to transition.
+        reason: Human-readable rationale for the revision request.
+        flags: Optional list of security or quality tags identified during verification.
+    """
+    from escrow.models import Pact, PactLedger
+
+    with transaction.atomic():
+        pact.state = Pact.State.REVISION_REQUESTED
+        pact.last_rejection_reason = reason
+        pact.last_rejection_flags = flags or []
+        pact.save(update_fields=[
+            "state",
+            "last_rejection_reason",
+            "last_rejection_flags",
+            "updated_at",
+        ])
+
+        PactLedger.objects.create(
             pact=pact,
-            reason=void_reason,
-            paypal_service=paypal_service,
-            confidence_score=report.confidence_score,
-            flags=report.flags,
+            action="REVISION_REQUESTED",
+            details={
+                "reason": reason,
+                "flags": flags or [],
+                "attempt": pact.current_attempt,
+                "max_attempts": pact.max_attempts,
+                "attempts_remaining": pact.max_attempts - pact.current_attempt,
+            },
         )
+
+    logger.info(
+        "Pact %s transitioned to REVISION_REQUESTED (attempt %d/%d). PayPal hold preserved.",
+        pact.id,
+        pact.current_attempt,
+        pact.max_attempts,
+    )
 
 
 def _reject_pact(

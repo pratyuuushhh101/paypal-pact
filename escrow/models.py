@@ -23,6 +23,7 @@ class Pact(models.Model):
         CAPTURED = "CAPTURED", _("Captured")
         VOIDED = "VOIDED", _("Voided")
         REJECTED = "REJECTED", _("Rejected")
+        REVISION_REQUESTED = "REVISION_REQUESTED", _("Revision Requested")
 
     id = models.UUIDField(
         primary_key=True,
@@ -97,6 +98,26 @@ class Pact(models.Model):
     updated_at = models.DateTimeField(
         auto_now=True,
         help_text=_("Timestamp when the pact was last updated."),
+    )
+
+    # Retry / revision loop tracking
+    max_attempts = models.PositiveSmallIntegerField(
+        default=3,
+        help_text=_("Maximum allowed submission attempts before voiding."),
+    )
+    current_attempt = models.PositiveSmallIntegerField(
+        default=1,
+        help_text=_("Current submission attempt index."),
+    )
+    last_rejection_reason = models.TextField(
+        blank=True,
+        null=True,
+        help_text=_("AI rationale for previous revision request."),
+    )
+    last_rejection_flags = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=_("Security or quality flags from previous attempt."),
     )
 
     class Meta:
